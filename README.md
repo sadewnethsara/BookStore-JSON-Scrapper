@@ -7,6 +7,20 @@
 
 **Production (Vercel):** [https://bookstore-json.vercel.app](https://bookstore-json.vercel.app) — source repo [BookStore-JSON-Scrapper](https://github.com/sadewnethsara/BookStore-JSON-Scrapper). Set Supabase and cron/worker secrets in the Vercel project **Environment Variables** for full behavior.
 
+## Reference setup (BookStore + OCI + Vercel)
+
+End-to-end path that is **already in use** for this project (adjust names if yours differ).
+
+| Layer | What was set up |
+| --- | --- |
+| **GitHub** | Standalone **[BookStore-JSON-Scrapper](https://github.com/sadewnethsara/BookStore-JSON-Scrapper)** — Next.js json-view app, embedded `packages/shared-types` + `packages/supabase-client`, and **`rasakatha-scraper/`**. |
+| **Vercel** | Project **bookstore-json** → production alias **[bookstore-json.vercel.app](https://bookstore-json.vercel.app)**; GitHub integration for deploys; add Supabase + **`JSONVIEW_*`** secrets when you wire staging/cron/worker. |
+| **Oracle Cloud** | Compartment **bookstore-workloads**; **new VCN + public subnet**; **Ubuntu** instance with **public IPv4**; security list **ingress TCP 22** for SSH; SSH key pair (private key **only on your PC**, never in git). |
+| **Windows (SSH)** | If OpenSSH says **UNPROTECTED PRIVATE KEY FILE**, fix ACLs on the `.key`: `icacls <key> /inheritance:r` then `icacls <key> /grant:r "%USERNAME%:(R)"` so only your user can read it. |
+| **VM (scraper)** | `git clone https://github.com/sadewnethsara/BookStore-JSON-Scrapper.git` → `cd BookStore-JSON-Scrapper/rasakatha-scraper` → `python3 -m venv .venv` → `source .venv/bin/activate` → `pip install -r requirements.txt` → optional `export RASAKATHA_MAX_PAGES=2` for a short test → `python scraper.py` → **`output/products.json`** (+ `.csv`). Download with **`scp`** or upload JSON into the **json-view** UI. |
+
+**Optional next steps:** use **`tmux`** / **`screen`** or **systemd** so scrapes survive SSH disconnects; full catalog by unsetting **`RASAKATHA_MAX_PAGES`**; later call **`POST /api/catalog/ingest-jobs/:jobId/worker`** from the VM (Phase 5) with **`JSONVIEW_WORKER_SECRET`** once Supabase + Vercel env are configured.
+
 ---
 
 ## What this tool is (in plain language)
@@ -275,7 +289,7 @@ Shipped roadmap phases for this tool are **implemented** through **Phase 5**. He
    ```
 
 4. **Get the scraper onto the VM** (pick one)  
-   - **Git:** clone your monorepo (or a copy that contains `json-view/rasakatha-scraper`).  
+   - **Git:** clone **[BookStore-JSON-Scrapper](https://github.com/sadewnethsara/BookStore-JSON-Scrapper)** and use `BookStore-JSON-Scrapper/rasakatha-scraper`, or clone your full monorepo if it contains `json-view/rasakatha-scraper`.  
    - **No git remote:** from your PC, zip `rasakatha-scraper` and **SCP** it up, then `unzip` on the VM.
 
 5. **Python venv and first test run**
