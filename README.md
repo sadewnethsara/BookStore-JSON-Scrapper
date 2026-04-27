@@ -5,6 +5,8 @@
 ![Python](https://img.shields.io/badge/Python-3.10+-blue)
 ![Status](https://img.shields.io/badge/Status-production%20tool-orange)
 
+**Production (Vercel):** [https://bookstore-json.vercel.app](https://bookstore-json.vercel.app) — source repo [BookStore-JSON-Scrapper](https://github.com/sadewnethsara/BookStore-JSON-Scrapper). Set Supabase and cron/worker secrets in the Vercel project **Environment Variables** for full behavior.
+
 ---
 
 ## What this tool is (in plain language)
@@ -307,7 +309,7 @@ Admin-side narrative (approval, merge, media, **lowest-price** dashboard) lives 
 1. Apply Supabase migrations (including `20260427180000_jsonview_phase3_multisource_cron.sql`).
 2. Configure rows in **`public.catalog_sources`** (`fetch_url`, optional `fetch_headers`, thresholds, `enabled`).
 3. Deploy json-view with **`JSONVIEW_CRON_SECRET`** and **`SUPABASE_SERVICE_ROLE_KEY`**.
-4. Example **pg_cron** job that POSTs your deployed **`/api/catalog/cron-ingest`** (replace host and secret):
+4. Example **pg_cron** job that POSTs your deployed **`/api/catalog/cron-ingest`** (replace the secret with your real value; change the URL if you use a custom domain):
 
 ```sql
 select cron.schedule(
@@ -315,7 +317,7 @@ select cron.schedule(
   '0 5 * * *',
   $$
   select net.http_post(
-    url := 'https://YOUR_HOST/api/catalog/cron-ingest',
+    url := 'https://bookstore-json.vercel.app/api/catalog/cron-ingest',
     headers := jsonb_build_object(
       'Content-Type', 'application/json',
       'Authorization', 'Bearer ' || 'REPLACE_WITH_JSONVIEW_CRON_SECRET'
