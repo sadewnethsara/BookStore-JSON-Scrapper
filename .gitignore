@@ -39,3 +39,12 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Local operator data / scraper (do not push)
+/assets/save/
+/output/
+rasakatha-scraper/.venv/
+rasakatha-scraper/output/
+
+# Never commit cloud keys or local scratch
+/Oracle/

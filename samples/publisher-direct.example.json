@@ -1,0 +1,11 @@
+[
+  {
+    "name": "Example publisher title",
+    "url": "",
+    "sku": "PUB-DEMO-001",
+    "category": "Fiction",
+    "original_price": "1500",
+    "sale_price": "1200",
+    "catalog_source": "publisher_demo"
+  }
+]

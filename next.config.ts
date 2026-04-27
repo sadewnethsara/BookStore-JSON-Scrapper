@@ -1,8 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
   reactCompiler: true,
+  transpilePackages: ["@lumina/shared-types", "@lumina/supabase-client"],
 };
 
 export default nextConfig;
