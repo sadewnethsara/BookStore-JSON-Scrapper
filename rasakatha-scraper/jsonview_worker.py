@@ -8,6 +8,9 @@ Environment (required):
 
 Environment (optional):
   JSONVIEW_SCRAPE_FIRST   if "1"/"true", run scraper.py before upload
+  SCRAPER_SHOP_URL        shop listing URL (must match job.config.shop_url); default rasakatha
+  SCRAPER_PRODUCT_PATH_FRAGMENTS  e.g. /books/ or /product/,/books/ — must match product links
+  CATALOG_SOURCE          slug stored on rows (often same as catalog_source)
   JSONVIEW_INPUT_JSON     path to JSON array (default: output/products.json)
   JSONVIEW_PART_CHUNK_SIZE rows per part (default: 50)
 

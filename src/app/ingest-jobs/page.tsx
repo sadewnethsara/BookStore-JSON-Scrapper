@@ -36,6 +36,10 @@ export default function IngestJobsListPage() {
   const [creating, setCreating] = useState(false);
   const [newSource, setNewSource] = useState("rasakatha");
   const [newLabel, setNewLabel] = useState("");
+  /** Shop product-listing URL (first page); stored in job.config.shop_url */
+  const [shopUrl, setShopUrl] = useState("");
+  /** Comma-separated substring(s) that appear in product permalinks */
+  const [productFragments, setProductFragments] = useState("/books/");
 
   useEffect(() => {
     const ac = new AbortController();
@@ -101,12 +105,23 @@ export default function IngestJobsListPage() {
     setCreating(true);
     setError(null);
     try {
+      const config: Record<string, string> = {};
+      const su = shopUrl.trim();
+      if (su) {
+        config.shop_url = su.endsWith("/") ? su : `${su}/`;
+      }
+      const pf = productFragments.trim();
+      if (pf) {
+        config.product_path_fragments = pf;
+      }
+
       const res = await fetch("/api/catalog/ingest-jobs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           catalog_source,
           label: newLabel.trim() || null,
+          ...(Object.keys(config).length > 0 ? { config } : {}),
         }),
       });
       const data = (await res.json()) as {
@@ -155,13 +170,17 @@ export default function IngestJobsListPage() {
             Catalog ingest jobs
           </h1>
           <p className="mt-2 max-w-2xl text-sm text-white/55">
-            Worker uploads land here (Phase 5). Open a job to preview{" "}
+            Worker uploads land here (Phase 5). Add a shop listing URL (e.g.{" "}
+            <code className="rounded bg-white/10 px-1 text-xs">
+              https://bookolog.lk/shop/
+            </code>
+            ) and optional path fragments for permalinks. Open a job to preview{" "}
             <code className="rounded bg-white/10 px-1 text-xs">payload_json</code>{" "}
-            per part, download JSON, then use the{" "}
+            — then use the{" "}
             <Link href="/" className="text-primary underline">
               review queue
             </Link>{" "}
-            to push approved rows to staging.
+            for staging.
           </p>
         </header>
 
@@ -171,37 +190,71 @@ export default function IngestJobsListPage() {
           </h2>
           <form
             onSubmit={(e) => void handleCreateJob(e)}
-            className="mt-4 flex flex-wrap items-end gap-4"
+            className="mt-4 flex flex-col gap-4"
           >
-            <div>
-              <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-white/45">
-                catalog_source
-              </label>
-              <input
-                value={newSource}
-                onChange={(e) => setNewSource(e.target.value)}
-                className="rounded-xl border border-white/10 bg-black/40 px-4 py-2.5 text-sm outline-none focus:border-primary"
-                placeholder="rasakatha"
-              />
+            <div className="flex flex-wrap items-end gap-4">
+              <div>
+                <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-white/45">
+                  catalog_source
+                </label>
+                <input
+                  value={newSource}
+                  onChange={(e) => setNewSource(e.target.value)}
+                  className="w-full min-w-[10rem] rounded-xl border border-white/10 bg-black/40 px-4 py-2.5 text-sm outline-none focus:border-primary sm:w-auto"
+                  placeholder="bookolog"
+                />
+              </div>
+              <div className="min-w-[200px] flex-1">
+                <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-white/45">
+                  Label (optional)
+                </label>
+                <input
+                  value={newLabel}
+                  onChange={(e) => setNewLabel(e.target.value)}
+                  className="w-full rounded-xl border border-white/10 bg-black/40 px-4 py-2.5 text-sm outline-none focus:border-primary"
+                  placeholder="OCI full run"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={creating || !newSource.trim()}
+                className="premium-button rounded-xl px-6 py-2.5 text-xs font-black uppercase tracking-widest disabled:opacity-40"
+              >
+                {creating ? "Creating…" : "Create job"}
+              </button>
             </div>
-            <div className="min-w-[200px] flex-1">
+            <div className="w-full">
               <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-white/45">
-                Label (optional)
+                Shop listing URL (optional)
               </label>
               <input
-                value={newLabel}
-                onChange={(e) => setNewLabel(e.target.value)}
+                value={shopUrl}
+                onChange={(e) => setShopUrl(e.target.value)}
                 className="w-full rounded-xl border border-white/10 bg-black/40 px-4 py-2.5 text-sm outline-none focus:border-primary"
-                placeholder="OCI full run"
+                placeholder="https://bookolog.lk/shop/"
+                autoComplete="off"
               />
+              <p className="mt-1 text-[11px] text-white/35">
+                First page of the product grid (trailing slash OK). Defaults to
+                rasakatha if empty.
+              </p>
             </div>
-            <button
-              type="submit"
-              disabled={creating || !newSource.trim()}
-              className="premium-button rounded-xl px-6 py-2.5 text-xs font-black uppercase tracking-widest disabled:opacity-40"
-            >
-              {creating ? "Creating…" : "Create job"}
-            </button>
+            <div className="w-full">
+              <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-white/45">
+                Product URL path fragments (optional)
+              </label>
+              <input
+                value={productFragments}
+                onChange={(e) => setProductFragments(e.target.value)}
+                className="w-full rounded-xl border border-white/10 bg-black/40 px-4 py-2.5 font-mono text-sm outline-none focus:border-primary"
+                placeholder="/books/ or /product/,/books/"
+              />
+              <p className="mt-1 text-[11px] text-white/35">
+                Comma-separated pieces that appear in product links (not the
+                homepage). Example WooCommerce:{" "}
+                <code className="text-white/45">/product/</code>.
+              </p>
+            </div>
           </form>
         </section>
 

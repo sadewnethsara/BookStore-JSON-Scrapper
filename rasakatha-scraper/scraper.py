@@ -18,9 +18,34 @@ import requests
 from bs4 import BeautifulSoup
 
 # ── Configuration ────────────────────────────────────────────────────────────
-BASE_URL = "https://rasakatha.lk"
-SHOP_URL = "https://rasakatha.lk/shop/"
 OUTPUT_DIR = Path("output")
+
+
+def _default_shop_url() -> str:
+    """Full URL of the shop *listing* page (first page of products). Override with SCRAPER_SHOP_URL."""
+    return "https://rasakatha.lk/shop/"
+
+
+def _resolved_shop_url() -> str:
+    raw = os.environ.get("SCRAPER_SHOP_URL", "").strip()
+    shop = raw if raw else _default_shop_url()
+    return shop if shop.endswith("/") else shop + "/"
+
+
+SHOP_URL = _resolved_shop_url()
+
+
+def _product_path_fragments() -> list[str]:
+    """
+    Path substring that must appear in product permalinks (comma-separated).
+    Default /books/ (rasakatha). Example for other WooCommerce shops: /product/,/books/
+    """
+    raw = os.environ.get("SCRAPER_PRODUCT_PATH_FRAGMENTS", "/books/").strip()
+    parts = [x.strip() for x in raw.split(",") if x.strip()]
+    return parts if parts else ["/books/"]
+
+
+PRODUCT_PATH_FRAGMENTS = _product_path_fragments()
 OUTPUT_CSV = OUTPUT_DIR / "products.csv"
 OUTPUT_JSON = OUTPUT_DIR / "products.json"
 
@@ -100,12 +125,17 @@ def get_soup(url: str) -> Optional[BeautifulSoup]:
 # ── Listing page helpers ──────────────────────────────────────────────────────
 def listing_page_url(page: int) -> str:
     """
-    WooCommerce canonical pagination is /shop/page/N/.
-    Query ?page=N often yields wrong markup (eg. categories only / no grid), so page 2+ finds 0 products.
+    WooCommerce canonical pagination is <shop-path>/page/N/.
+    Derived from SCRAPER_SHOP_URL so any host/path works (e.g. bookolog.lk/shop/).
     """
     if page <= 1:
         return SHOP_URL
-    return f"{BASE_URL.rstrip('/')}/shop/page/{page}/"
+    su = urlparse(SHOP_URL)
+    origin = f"{su.scheme}://{su.netloc}"
+    path = (su.path or "/").rstrip("/")
+    if not path:
+        return f"{origin}/page/{page}/"
+    return f"{origin}{path}/page/{page}/"
 
 
 def get_product_urls_from_page(page: int) -> list[str]:
@@ -126,9 +156,16 @@ def get_product_urls_from_page(page: int) -> list[str]:
         if full in seen:
             return
         path = urlparse(full).path
-        if "/books/" not in path:
-            return
-        if path.rstrip("/").endswith("/books"):
+        hit = False
+        for frag in PRODUCT_PATH_FRAGMENTS:
+            if frag not in path:
+                continue
+            rest = path.split(frag, 1)[-1].strip("/")
+            if not rest:
+                continue
+            hit = True
+            break
+        if not hit:
             return
         seen.add(full)
         urls.append(full)
@@ -138,8 +175,8 @@ def get_product_urls_from_page(page: int) -> list[str]:
         for a in li.select("a[href]"):
             consider(a.get("href") or "")
 
-    # Fallback: any book permalink on the listing row
-    for a in soup.select("a[href*='/books/']"):
+    # Fallback: any link whose path passes consider() (filters by fragments)
+    for a in soup.select("a[href]"):
         consider(a.get("href") or "")
 
     return urls
@@ -326,7 +363,7 @@ def save_json(products: list[Product]):
 
 # ── Main ─────────────────────────────────────────────────────────────────────
 def main():
-    log.info("Starting rasakatha.lk scraper …")
+    log.info("Listing URL: %s | product path fragments: %s", SHOP_URL, PRODUCT_PATH_FRAGMENTS)
     OUTPUT_DIR.mkdir(exist_ok=True)
 
     # Discover total pages

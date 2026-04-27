@@ -1,6 +1,7 @@
 "use client";
 
 import { DashboardNav } from "@/components/dashboard-nav";
+import { WorkerEnvSnippet } from "@/components/worker-env-snippet";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -98,6 +99,21 @@ export default function IngestJobDetailPage() {
     })();
     return () => ac.abort();
   }, [jobId]);
+
+  const jobConfig = useMemo(() => {
+    const c = job?.config;
+    if (c && typeof c === "object" && !Array.isArray(c)) {
+      return c as Record<string, unknown>;
+    }
+    return {};
+  }, [job]);
+
+  const shopUrlCfg =
+    typeof jobConfig.shop_url === "string" ? jobConfig.shop_url : "";
+  const fragmentsCfg =
+    typeof jobConfig.product_path_fragments === "string"
+      ? jobConfig.product_path_fragments
+      : "";
 
   const payloadSize = useMemo(() => {
     const m = new Map<number, number>();
@@ -233,13 +249,41 @@ export default function IngestJobDetailPage() {
                 </div>
                 <div className="sm:col-span-2">
                   <dt className="text-[10px] font-black uppercase text-white/35">
-                    Config (opaque)
+                    Shop listing URL
                   </dt>
-                  <dd className="mt-1 font-mono text-xs text-white/55 break-all">
-                    {JSON.stringify(job.config ?? {})}
+                  <dd className="mt-1 break-all font-mono text-xs text-white/75">
+                    {shopUrlCfg || (
+                      <span className="text-white/35">(default rasakatha)</span>
+                    )}
+                  </dd>
+                </div>
+                <div className="sm:col-span-2">
+                  <dt className="text-[10px] font-black uppercase text-white/35">
+                    Product path fragments
+                  </dt>
+                  <dd className="mt-1 font-mono text-xs text-white/75">
+                    {fragmentsCfg || (
+                      <span className="text-white/35">/books/</span>
+                    )}
                   </dd>
                 </div>
               </dl>
+
+              <WorkerEnvSnippet
+                jobId={job.id}
+                catalogSource={job.catalog_source}
+                shopUrl={shopUrlCfg}
+                productPathFragments={fragmentsCfg}
+              />
+
+              <details className="mt-6 rounded-xl border border-white/10 bg-black/20">
+                <summary className="cursor-pointer px-4 py-3 text-[11px] font-bold text-white/55">
+                  Raw job.config JSON
+                </summary>
+                <pre className="max-h-40 overflow-y-auto border-t border-white/10 px-4 py-3 font-mono text-[10px] text-white/45">
+                  {JSON.stringify(job.config ?? {}, null, 2)}
+                </pre>
+              </details>
 
               {job.error_message ? (
                 <div className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-100">
@@ -310,7 +354,7 @@ export default function IngestJobDetailPage() {
                         <summary className="cursor-pointer px-4 py-3 text-xs font-bold text-primary hover:bg-white/[0.03]">
                           Show / hide payload preview
                         </summary>
-                        <div className="max-h-[min(420px,50vh)] overflow-auto border-t border-white/10 bg-black/50 px-4 py-3">
+                        <div className="max-h-[min(560px,70vh)] overflow-y-auto border-t border-white/10 bg-black/50 px-4 py-3">
                           <pre className="text-[11px] leading-relaxed text-emerald-200/90 whitespace-pre-wrap break-all font-mono">
                             {p.payload_json == null
                               ? "(no payload_json)"
