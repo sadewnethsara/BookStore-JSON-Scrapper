@@ -46,6 +46,7 @@ next-env.d.ts
 /output/
 rasakatha-scraper/.venv/
 rasakatha-scraper/output/
+rasakatha-scraper/__pycache__/
 
 # Never commit cloud keys or local scratch
 /Oracle/

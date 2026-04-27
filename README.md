@@ -19,7 +19,7 @@ End-to-end path that is **already in use** for this project (adjust names if you
 | **Windows (SSH)** | If OpenSSH says **UNPROTECTED PRIVATE KEY FILE**, fix ACLs on the `.key`: `icacls <key> /inheritance:r` then `icacls <key> /grant:r "%USERNAME%:(R)"` so only your user can read it. |
 | **VM (scraper)** | `git clone https://github.com/sadewnethsara/BookStore-JSON-Scrapper.git` → `cd BookStore-JSON-Scrapper/rasakatha-scraper` → `python3 -m venv .venv` → `source .venv/bin/activate` → `pip install -r requirements.txt` → optional `export RASAKATHA_MAX_PAGES=2` for a short test → `python scraper.py` → **`output/products.json`** (+ `.csv`). Download with **`scp`** or upload JSON into the **json-view** UI. |
 
-**Optional next steps:** use **`tmux`** / **`screen`** or **systemd** so scrapes survive SSH disconnects; full catalog by unsetting **`RASAKATHA_MAX_PAGES`**; later call **`POST /api/catalog/ingest-jobs/:jobId/worker`** from the VM (Phase 5) with **`JSONVIEW_WORKER_SECRET`** once Supabase + Vercel env are configured.
+**Optional next steps:** use **`tmux`** / **`screen`** or **systemd** so scrapes survive SSH disconnects; full catalog by unsetting **`RASAKATHA_MAX_PAGES`**; wire **`rasakatha-scraper/jsonview_worker.py`** on the VM (Phase 5) so **`POST /api/catalog/ingest-jobs/:jobId/worker`** receives chunked JSON — set **`JSONVIEW_BASE_URL`**, **`JSONVIEW_WORKER_SECRET`**, **`JSONVIEW_JOB_ID`** once Supabase + Vercel env are configured (details under **OCI Ubuntu VM**, step 7).
 
 ---
 
@@ -309,8 +309,21 @@ Shipped roadmap phases for this tool are **implemented** through **Phase 5**. He
 6. **Keep it running after you disconnect (optional)**  
    Use **`tmux`** or **`screen`** for a quick session, or create a **`systemd`** unit that runs `scraper.py` on boot (recommended once stable). Example pattern: `WorkingDirectory=/home/ubuntu/rasakatha-scraper`, `ExecStart=/home/ubuntu/rasakatha-scraper/.venv/bin/python scraper.py`, `Environment=RASAKATHA_DELAY_SECONDS=2`.
 
-7. **Next upgrades (your master plan)**  
-   Storing JSON in **OCI Object Storage**, posting progress to **Supabase**, and triggering from **Vercel** are **Phase 5+** — the VM you have is the right place to run Python; wire APIs and buckets when you are ready.
+7. **Push scrape results into json-view ingest jobs (Phase 5)**  
+   In the **Vercel** json-view project, set **`JSONVIEW_WORKER_SECRET`** (and keep **`SUPABASE_SERVICE_ROLE_KEY`** so the worker route can write parts). While signed in as an **admin** in json-view, create a job (UI when available, or **`POST /api/catalog/ingest-jobs`** with JSON like `{ "catalog_source": "rasakatha", "label": "OCI run" }`) and copy the returned job **`id`**. On the VM, in `rasakatha-scraper` with the venv active:
+
+   ```bash
+   export JSONVIEW_BASE_URL=https://bookstore-json.vercel.app   # your deploy URL
+   export JSONVIEW_WORKER_SECRET='your-shared-secret'
+   export JSONVIEW_JOB_ID='xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'
+   export JSONVIEW_SCRAPE_FIRST=1    # optional: run scraper.py before upload
+   python jsonview_worker.py
+   ```
+
+   This posts **heartbeat → part chunks (default 50 rows) → complete** to **`POST /api/catalog/ingest-jobs/:jobId/worker`**. Rows land in **`catalog_ingest_job_parts.payload_json`** for downstream staging import. See **`JSONVIEW_*`** env names in **`jsonview_worker.py`**.
+
+8. **Next upgrades (your master plan)**  
+   Storing JSON in **OCI Object Storage**, richer progress UIs, and triggering from **Vercel** are **Phase 5+** — the VM you have is the right place to run Python; wire object storage when you are ready.
 
 **Legal note:** Scraping third-party sites can violate their terms or local law. Prefer **official feeds**, **APIs**, or **written permission** where possible.
 
@@ -349,7 +362,7 @@ After a **CLI** scrape, operators can **`POST /api/catalog/snapshot-report`** wi
 ## Security (read this before exposing the app to a network)
 
 - **Local-only** (no Supabase URL): the API can write to **your machine’s disk** and trigger **open-folder** shell helpers—treat like a **trusted workstation tool**, not a public website.
-- **With Supabase**: **save, merge,** and other **write** routes expect an **admin** Supabase session.
+- **With Supabase**: unauthenticated visitors are redirected to **`/login`** (email/password). After sign-in, **save, merge,** and other **write** routes expect **`app_metadata.role === "admin"`** (set in Supabase Dashboard → Authentication → Users → App Metadata). Add your production and local URLs under **Authentication → URL Configuration** (Site URL / Redirect URLs) so sessions work on **Vercel** and **`localhost`**.
 - **Never** commit **service role** keys or **cron secrets**; **`SUPABASE_SERVICE_ROLE_KEY`** is server-only.
 
 ---

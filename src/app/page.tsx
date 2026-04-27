@@ -2,8 +2,17 @@
 
 import { dedupeBySku } from "@/lib/dedupe-by-sku";
 import type { ScrapedBook } from "@lumina/shared-types";
+import { createLuminaBrowserClient } from "@lumina/supabase-client/browser";
 import { partitionScrapedBooks } from "@lumina/shared-types";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+
+function isSupabasePublicConfigured(): boolean {
+  return Boolean(
+    process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() &&
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim(),
+  );
+}
 
 interface Notification {
   id: number;
@@ -12,6 +21,8 @@ interface Notification {
 }
 
 export default function Home() {
+  const router = useRouter();
+  const [authEmail, setAuthEmail] = useState<string | null>(null);
   const [products, setProducts] = useState<ScrapedBook[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedItems, setSelectedItems] = useState<ScrapedBook[]>([]);
@@ -28,6 +39,18 @@ export default function Home() {
         setAiEnabled(Boolean(d?.enabled));
       })
       .catch(() => setAiEnabled(false));
+  }, []);
+
+  useEffect(() => {
+    if (!isSupabasePublicConfigured()) return;
+    const supabase = createLuminaBrowserClient();
+    supabase.auth.getSession().then(({ data }) => {
+      setAuthEmail(data.session?.user?.email ?? null);
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      setAuthEmail(session?.user?.email ?? null);
+    });
+    return () => sub.subscription.unsubscribe();
   }, []);
 
   const addNotification = (msg: string, type: Notification['type'] = 'info') => {
@@ -290,6 +313,30 @@ export default function Home() {
         </div>
         
         <div className="flex items-center gap-6">
+          {isSupabasePublicConfigured() && authEmail && (
+            <div className="hidden sm:flex flex-col items-end gap-1 text-right">
+              <span className="text-[9px] font-black uppercase tracking-wider text-white/35">
+                Signed in
+              </span>
+              <span className="max-w-[160px] truncate text-[11px] font-semibold text-white/70">
+                {authEmail}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  void (async () => {
+                    const supabase = createLuminaBrowserClient();
+                    await supabase.auth.signOut();
+                    router.push("/login");
+                    router.refresh();
+                  })();
+                }}
+                className="text-[10px] font-bold uppercase tracking-wider text-primary hover:underline"
+              >
+                Sign out
+              </button>
+            </div>
+          )}
           {products.length > 0 && (
             <div className="hidden lg:flex flex-col items-end gap-0.5">
               <span className="text-[10px] font-black opacity-30 uppercase tracking-tighter">Inventory Progress</span>
