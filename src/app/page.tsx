@@ -4,6 +4,7 @@ import { dedupeBySku } from "@/lib/dedupe-by-sku";
 import type { ScrapedBook } from "@lumina/shared-types";
 import { createLuminaBrowserClient } from "@lumina/supabase-client/browser";
 import { partitionScrapedBooks } from "@lumina/shared-types";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
@@ -313,6 +314,14 @@ export default function Home() {
         </div>
         
         <div className="flex items-center gap-6">
+          {isSupabasePublicConfigured() && (
+            <Link
+              href="/ingest-jobs"
+              className="hidden sm:inline text-[10px] font-black uppercase tracking-widest text-violet-300/90 hover:text-violet-200 border border-violet-500/30 rounded-lg px-3 py-2"
+            >
+              Ingest jobs
+            </Link>
+          )}
           {isSupabasePublicConfigured() && authEmail && (
             <div className="hidden sm:flex flex-col items-end gap-1 text-right">
               <span className="text-[9px] font-black uppercase tracking-wider text-white/35">
