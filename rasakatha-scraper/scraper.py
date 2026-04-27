@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import time
+from urllib.parse import urljoin, urlparse
 from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Optional
@@ -97,19 +98,50 @@ def get_soup(url: str) -> Optional[BeautifulSoup]:
 
 
 # ── Listing page helpers ──────────────────────────────────────────────────────
+def listing_page_url(page: int) -> str:
+    """
+    WooCommerce canonical pagination is /shop/page/N/.
+    Query ?page=N often yields wrong markup (eg. categories only / no grid), so page 2+ finds 0 products.
+    """
+    if page <= 1:
+        return SHOP_URL
+    return f"{BASE_URL.rstrip('/')}/shop/page/{page}/"
+
+
 def get_product_urls_from_page(page: int) -> list[str]:
     """Return all product URLs found on a shop listing page."""
-    url = SHOP_URL if page == 1 else f"{SHOP_URL}?page={page}"
+    url = listing_page_url(page)
     soup = get_soup(url)
     if soup is None:
         return []
 
-    urls = []
+    urls: list[str] = []
+    seen: set[str] = set()
+
+    def consider(raw_href: str) -> None:
+        raw = (raw_href or "").strip().split("#")[0]
+        if not raw:
+            return
+        full = urljoin(SHOP_URL, raw)
+        if full in seen:
+            return
+        path = urlparse(full).path
+        if "/books/" not in path:
+            return
+        if path.rstrip("/").endswith("/books"):
+            return
+        seen.add(full)
+        urls.append(full)
+
+    # Prefer WooCommerce product grid (works when ?page=N breaks)
+    for li in soup.select("ul.products li.product"):
+        for a in li.select("a[href]"):
+            consider(a.get("href") or "")
+
+    # Fallback: any book permalink on the listing row
     for a in soup.select("a[href*='/books/']"):
-        href = a.get("href", "")
-        if href and href not in urls:
-            if "/books/" in href and not href.endswith("/books/"):
-                urls.append(href)
+        consider(a.get("href") or "")
+
     return urls
 
 
