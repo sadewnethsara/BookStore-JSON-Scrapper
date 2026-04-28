@@ -151,6 +151,8 @@ Copy [`.env.example`](.env.example) to **`.env.local`** for local development.
 | `GET` / `PATCH /api/catalog/ingest-jobs/:jobId` | Admin: job + parts; `GET ?include_payload=1` returns part JSON; `PATCH` body `{ "status": "cancelled" }`. |
 | `POST /api/catalog/ingest-jobs/:jobId/worker` | **Phase 5** — **`JSONVIEW_WORKER_SECRET`** + **`SUPABASE_SERVICE_ROLE_KEY`** on server: heartbeat, upload part (`ScrapedBook[]`), complete, fail. |
 | `PATCH /api/catalog/ingest-jobs/:jobId/parts/:partIndex` | Admin: mark part **`imported`** or **`skipped`** after staging import (Phase 7 can wire UI). |
+| `POST /api/catalog/scan-estimate` | Admin: quick website scan to estimate total products before creating a job/chunk plan. |
+| `GET` / `POST /api/catalog/reviewed` | `GET` (admin): list reviewed/imported parts; `POST` (super admin): publish reviewed parts to `staging.books` queue. |
 
 Implementation files live under `src/app/api/`.
 
@@ -226,6 +228,7 @@ Shipped roadmap phases for this tool are **implemented** through **Phase 5**. He
 - **Phase 3 — Multi-source & observability** — Each row has **`catalog_source`**; staging is unique on `(catalog_source, source_sku)`; **`catalog_sources`**, **`catalog_scrape_runs`**, **`catalog_diff_alerts`** support scheduled **`/api/catalog/cron-ingest`** and CLI **`/api/catalog/snapshot-report`**. Optional **pg_cron** POST example is documented below.
 - **Phase 4 — AI & quality dashboard** — **`/api/ai/enrich`** + **AI suggest** in the UI (needs **`OPENAI_API_KEY`**). In **book-store-brain**, **Catalog Data Quality** uses RPC **`catalog_data_quality_stats`** (see migration `20260427200000_phase4_catalog_quality_stats.sql`).
 - **Phase 5 — Job API + storage contract** — Tables **`catalog_ingest_jobs`** and **`catalog_ingest_job_parts`** (migration `20260428120000_jsonview_phase5_ingest_jobs.sql`): admin creates/lists jobs; workers (OCI VM, etc.) **`POST`** heartbeats and **`ScrapedBook[]`** chunks to **`/api/catalog/ingest-jobs/:id/worker`** using **`JSONVIEW_WORKER_SECRET`**; parts store JSON in **`payload_json`** (signed object storage URLs are a later optional enhancement).
+- **Phase 6 — Review handoff + publish queue (Supabase only)** — Frontend supports website preset + scan-estimate + chunk planning in **`/ingest-jobs`**, parts can be marked reviewed (`imported`) from the left-panel preview/import flow, profile menu includes **`/publish`**, and reviewed payloads can be staged for super-admin publish workflows in **book-store-brain**.
 
 ---
 
@@ -363,6 +366,7 @@ After a **CLI** scrape, operators can **`POST /api/catalog/snapshot-report`** wi
 
 - **Local-only** (no Supabase URL): the API can write to **your machine’s disk** and trigger **open-folder** shell helpers—treat like a **trusted workstation tool**, not a public website.
 - **With Supabase**: unauthenticated visitors are redirected to **`/login`** (email/password). After sign-in, **save, merge,** and other **write** routes expect **`app_metadata.role === "admin"`** (set in Supabase Dashboard → Authentication → Users → App Metadata). Add your production and local URLs under **Authentication → URL Configuration** (Site URL / Redirect URLs) so sessions work on **Vercel** and **`localhost`**.
+- **Publish actions**: reviewed-part publishing endpoints require **`app_metadata.role === "super_admin"`** (separate from admin curation rights).
 - **Never** commit **service role** keys or **cron secrets**; **`SUPABASE_SERVICE_ROLE_KEY`** is server-only.
 
 ---
@@ -376,6 +380,8 @@ After a **CLI** scrape, operators can **`POST /api/catalog/snapshot-report`** wi
 | AI button missing | **`OPENAI_API_KEY`** not set on the server running json-view. |
 | Cron ingest 401 | `Authorization: Bearer` matches **`JSONVIEW_CRON_SECRET`**. |
 | Worker ingest 401 / 503 | **`JSONVIEW_WORKER_SECRET`** set and `Authorization: Bearer` (or **`X-Jsonview-Worker`**) matches; service role key present on server. |
+| Publish queue 403 | User needs **`app_metadata.role = super_admin`** for `/api/catalog/reviewed` POST and downstream publish actions. |
+| Scan estimate fails | Verify shop listing URL and product path fragments (e.g. `/product/`, `/books/`, `product_id=`). |
 | Data quality page errors | Apply **`catalog_data_quality_stats`** migration; sign in as admin in book-store-brain. |
 
 ---

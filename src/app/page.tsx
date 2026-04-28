@@ -1,11 +1,12 @@
 "use client";
 
+import { CatalogSourcesPanel } from "@/components/catalog-sources-panel";
+import { ProfileMenu } from "@/components/profile-menu";
 import { dedupeBySku } from "@/lib/dedupe-by-sku";
 import type { ScrapedBook } from "@lumina/shared-types";
 import { createLuminaBrowserClient } from "@lumina/supabase-client/browser";
 import { partitionScrapedBooks } from "@lumina/shared-types";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 function isSupabasePublicConfigured(): boolean {
@@ -22,7 +23,6 @@ interface Notification {
 }
 
 export default function Home() {
-  const router = useRouter();
   const [authEmail, setAuthEmail] = useState<string | null>(null);
   const [products, setProducts] = useState<ScrapedBook[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -32,6 +32,8 @@ export default function Home() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [aiEnabled, setAiEnabled] = useState(false);
   const [aiWorking, setAiWorking] = useState(false);
+  const [catalogPreviewOpen, setCatalogPreviewOpen] = useState(false);
+  const [sourcesCollapsed, setSourcesCollapsed] = useState(false);
 
   useEffect(() => {
     fetch("/api/ai/enrich")
@@ -247,8 +249,16 @@ export default function Home() {
   return (
     <div className="h-screen flex flex-col overflow-hidden">
       {/* Header */}
-      <header className="glass shrink-0 z-40 w-full px-6 py-4 flex items-center justify-between h-24">
-        <div className="flex items-center gap-4">
+      <header className="glass shrink-0 z-40 w-full px-6 py-4 flex items-center justify-between h-24 gap-4">
+        <div className="flex min-w-0 flex-1 items-center gap-4">
+          {isSupabasePublicConfigured() && !catalogPreviewOpen ? (
+            <Link
+              href="/ingest-jobs"
+              className="shrink-0 text-[10px] font-black uppercase tracking-widest text-violet-300/90 hover:text-violet-200 border border-violet-500/30 rounded-lg px-3 py-2"
+            >
+              Ingest jobs
+            </Link>
+          ) : null}
           {products.length > 0 && currentProduct && (
             <div className="flex items-center gap-4 animate-in fade-in slide-in-from-left-4 duration-500">
               <div className="flex items-center gap-2">
@@ -313,39 +323,7 @@ export default function Home() {
           )}
         </div>
         
-        <div className="flex items-center gap-6">
-          {isSupabasePublicConfigured() && (
-            <Link
-              href="/ingest-jobs"
-              className="hidden sm:inline text-[10px] font-black uppercase tracking-widest text-violet-300/90 hover:text-violet-200 border border-violet-500/30 rounded-lg px-3 py-2"
-            >
-              Ingest jobs
-            </Link>
-          )}
-          {isSupabasePublicConfigured() && authEmail && (
-            <div className="hidden sm:flex flex-col items-end gap-1 text-right">
-              <span className="text-[9px] font-black uppercase tracking-wider text-white/35">
-                Signed in
-              </span>
-              <span className="max-w-[160px] truncate text-[11px] font-semibold text-white/70">
-                {authEmail}
-              </span>
-              <button
-                type="button"
-                onClick={() => {
-                  void (async () => {
-                    const supabase = createLuminaBrowserClient();
-                    await supabase.auth.signOut();
-                    router.push("/login");
-                    router.refresh();
-                  })();
-                }}
-                className="text-[10px] font-bold uppercase tracking-wider text-primary hover:underline"
-              >
-                Sign out
-              </button>
-            </div>
-          )}
+        <div className="flex shrink-0 items-center gap-4 sm:gap-6">
           {products.length > 0 && (
             <div className="hidden lg:flex flex-col items-end gap-0.5">
               <span className="text-[10px] font-black opacity-30 uppercase tracking-tighter">Inventory Progress</span>
@@ -368,39 +346,83 @@ export default function Home() {
             </div>
           )}
           
-          <div className="flex h-12 items-center gap-2">
-            <button 
-              onClick={handleSave}
-              disabled={isSaving || selectedItems.length === 0}
-              className="premium-button px-5 h-full rounded-xl text-xs font-black uppercase tracking-widest disabled:opacity-30 disabled:grayscale transition-all hover:shadow-primary/40 shadow-lg"
-            >
-              {isSaving ? 'Saving...' : 'Save Batches'}
-            </button>
-            <button 
-              onClick={handleMerge}
-              disabled={isMerging}
-              className="glass px-5 h-full rounded-xl text-xs font-black uppercase tracking-widest hover:bg-white/10 transition-all"
-            >
-              Merge
-            </button>
-          </div>
+          {products.length > 0 ? (
+            <div className="flex h-12 items-center gap-2">
+              <button 
+                onClick={handleSave}
+                disabled={isSaving || selectedItems.length === 0}
+                className="premium-button px-5 h-full rounded-xl text-xs font-black uppercase tracking-widest disabled:opacity-30 disabled:grayscale transition-all hover:shadow-primary/40 shadow-lg"
+              >
+                {isSaving ? 'Saving...' : 'Save Batches'}
+              </button>
+              <button 
+                onClick={handleMerge}
+                disabled={isMerging}
+                className="glass px-5 h-full rounded-xl text-xs font-black uppercase tracking-widest hover:bg-white/10 transition-all"
+              >
+                Merge
+              </button>
+            </div>
+          ) : null}
+          {isSupabasePublicConfigured() && !catalogPreviewOpen ? (
+            <ProfileMenu email={authEmail} />
+          ) : null}
         </div>
       </header>
 
-      <main className="flex-1 overflow-hidden relative flex flex-col">
-        <div className="w-full h-full px-4 py-4 flex flex-col gap-4">
-        {/* Status Message Removed as it is now in the header */}
+      <main className="relative flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
+        {!sourcesCollapsed ? (
+          <aside className="flex max-h-[42vh] min-h-0 shrink-0 flex-col border-b border-white/10 bg-black/25 md:max-h-none md:w-[min(380px,36vw)] md:border-b-0 md:border-r">
+            <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
+              <CatalogSourcesPanel
+                enabled={isSupabasePublicConfigured()}
+                onCatalogPreviewActiveChange={setCatalogPreviewOpen}
+                onImportBooks={(items) => {
+                  setProducts(items);
+                  setCurrentIndex(0);
+                  setSelectedItems([]);
+                }}
+                onNotify={addNotification}
+              />
+            </div>
+          </aside>
+        ) : null}
+
+        <button
+          type="button"
+          title={sourcesCollapsed ? "Show catalog sources" : "Hide catalog sources"}
+          aria-expanded={!sourcesCollapsed}
+          onClick={() => {
+            setSourcesCollapsed((c) => {
+              const next = !c;
+              if (next) setCatalogPreviewOpen(false);
+              return next;
+            });
+          }}
+          className="flex shrink-0 flex-col items-center justify-center gap-1 border-b border-white/10 bg-black/40 px-2 py-2 text-[9px] font-black uppercase tracking-tighter text-white/55 hover:bg-white/10 md:w-10 md:border-b-0 md:border-r md:px-1"
+        >
+          <span aria-hidden className="text-base leading-none">
+            {sourcesCollapsed ? "›" : "‹"}
+          </span>
+          <span className="max-w-[2.5rem] text-center leading-tight md:max-w-none">
+            {sourcesCollapsed ? "Sources" : "Hide"}
+          </span>
+        </button>
+
+        {/* Right: upload + reviewer */}
+        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <div className="flex h-full w-full flex-col gap-4 px-4 py-4">
 
         {products.length === 0 ? (
-          <div className="flex-1 flex flex-col items-center justify-center bg-white/5 rounded-3xl border-2 border-dashed border-white/10 m-4">
-            <div className="w-24 h-24 rounded-3xl premium-button flex items-center justify-center mb-6 shadow-2xl shadow-primary/20">
-              <UploadIcon className="w-12 h-12 text-white" />
+          <div className="flex flex-1 flex-col items-center justify-center rounded-3xl border-2 border-dashed border-white/10 bg-white/5 m-1">
+            <div className="mb-6 flex h-24 w-24 items-center justify-center rounded-3xl premium-button shadow-2xl shadow-primary/20">
+              <UploadIcon className="h-12 w-12 text-white" />
             </div>
-            <h2 className="text-3xl font-black mb-3 italic">Upload your Dataset</h2>
-            <p className="text-gray-400 mb-10 max-w-sm text-center text-lg leading-relaxed">
+            <h2 className="mb-3 text-3xl font-black italic">Upload your Dataset</h2>
+            <p className="mb-10 max-w-sm text-center text-lg leading-relaxed text-gray-400">
               Drop your JSON file here to begin your ultra-premium review experience.
             </p>
-            <label className="premium-button px-10 py-4 rounded-2xl cursor-pointer font-black text-lg transition-all hover:scale-105 active:scale-95 shadow-xl">
+            <label className="premium-button cursor-pointer rounded-2xl px-10 py-4 text-lg font-black shadow-xl transition-all hover:scale-105 active:scale-95">
               Select JSON File
               <input type="file" accept=".json" onChange={handleFileUpload} className="hidden" />
             </label>
@@ -473,10 +495,11 @@ export default function Home() {
             </div>
           </div>
         ) : (
-          <div className="flex-1 flex items-center justify-center">
+          <div className="flex flex-1 items-center justify-center">
             <h2 className="text-2xl font-bold">Product not found</h2>
           </div>
         )}
+        </div>
         </div>
       </main>
       {/* Bottom Spacer for fixed notification container only */}

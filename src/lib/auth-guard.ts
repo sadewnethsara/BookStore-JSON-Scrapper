@@ -38,9 +38,48 @@ export async function assertJsonViewWriteAuth(): Promise<NextResponse | null> {
 
   const appRole = (user.app_metadata as Record<string, unknown> | undefined)
     ?.role;
-  if (appRole !== "admin") {
+  if (appRole !== "admin" && appRole !== "super_admin") {
     return NextResponse.json(
-      { error: "Forbidden: app_metadata.role must be admin for json-view writes." },
+      {
+        error:
+          "Forbidden: app_metadata.role must be admin or super_admin for json-view writes.",
+      },
+      { status: 403 },
+    );
+  }
+
+  return null;
+}
+
+export async function assertJsonViewSuperAdminAuth(): Promise<NextResponse | null> {
+  const configured = isJsonViewSupabaseConfigured();
+  if (!configured) {
+    return NextResponse.json(
+      { error: "Supabase auth is required for this action." },
+      { status: 400 },
+    );
+  }
+
+  const supabase = await createLuminaServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json(
+      { error: "Unauthorized: sign in with a super admin account." },
+      { status: 401 },
+    );
+  }
+
+  const appRole = (user.app_metadata as Record<string, unknown> | undefined)
+    ?.role;
+  if (appRole !== "super_admin") {
+    return NextResponse.json(
+      {
+        error:
+          "Forbidden: app_metadata.role must be super_admin for publish actions.",
+      },
       { status: 403 },
     );
   }
