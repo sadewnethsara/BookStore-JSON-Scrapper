@@ -37,16 +37,16 @@ export async function GET(request: Request) {
 
   const supabase = await jsonViewAdminDb();
 
-  // Pick the oldest pending job that has no recent heartbeat (avoids double-pick)
-  // A job that has been "running" for > 10 min with no heartbeat is also eligible
-  // (stale/crashed previous attempt).
+  // Pick the oldest pending job that has no recent heartbeat (avoids double-pick).
+  // A running job with no heartbeat for > 90 min is considered stale/crashed.
+  // (scraping 700+ products takes ~20 min; heartbeats fire every 90s from the daemon)
   const { data: jobs, error } = await supabase
     .from("catalog_ingest_jobs")
     .select("id, catalog_source, label, config, rows_total_est, parts_total, created_at")
     .or(
       "status.eq.pending," +
       "and(status.eq.running,last_heartbeat_at.lt." +
-        new Date(Date.now() - 10 * 60 * 1000).toISOString() +
+        new Date(Date.now() - 90 * 60 * 1000).toISOString() +
       ")",
     )
     .order("created_at", { ascending: true })

@@ -37,6 +37,7 @@ import math
 import os
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import Any, Optional
@@ -101,14 +102,34 @@ def _heartbeat(session: requests.Session, job_id: str,
                parts_total: int = 0) -> None:
     try:
         _post_worker(session, job_id, {
-            "type":          "heartbeat",
-            "status":        "running",
-            "rows_scraped":  rows_scraped,
+            "type":           "heartbeat",
+            "status":         "running",
+            "rows_scraped":   rows_scraped,
             "rows_total_est": rows_total_est,
-            "parts_total":   parts_total,
+            "parts_total":    parts_total,
         })
     except Exception as e:
         log.warning("Heartbeat failed: %s", e)
+
+
+class _HeartbeatThread(threading.Thread):
+    """Sends a keep-alive heartbeat every INTERVAL seconds while the scraper runs."""
+
+    INTERVAL = 90  # seconds — well under the 10-min stale threshold
+
+    def __init__(self, session: requests.Session, job_id: str):
+        super().__init__(daemon=True)
+        self._session  = session
+        self._job_id   = job_id
+        self._stop_evt = threading.Event()
+
+    def run(self) -> None:
+        while not self._stop_evt.wait(self.INTERVAL):
+            log.debug("Sending scrape-phase heartbeat for job %s", self._job_id)
+            _heartbeat(self._session, self._job_id)
+
+    def stop(self) -> None:
+        self._stop_evt.set()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -204,7 +225,8 @@ def resolve_site(catalog_source: str, job_config: dict) -> Optional[dict]:
 # Scraping
 # ══════════════════════════════════════════════════════════════════════════════
 
-def run_scraper(site_id: str, max_pages: Optional[int], delay: float) -> Path:
+def run_scraper(site_id: str, max_pages: Optional[int], delay: float,
+                heartbeat_thread: Optional["_HeartbeatThread"] = None) -> Path:
     """Run scraper.py --site <id> --format json and return path to output JSON."""
     scraper = SCRIPT_DIR / "scraper.py"
     args = [sys.executable, str(scraper), "--site", site_id, "--format", "json"]
@@ -214,7 +236,15 @@ def run_scraper(site_id: str, max_pages: Optional[int], delay: float) -> Path:
         args += ["--delay", str(delay)]
 
     log.info("Running scraper: %s", " ".join(args))
-    result = subprocess.run(args, cwd=str(SCRIPT_DIR), capture_output=False)
+    if heartbeat_thread:
+        heartbeat_thread.start()
+
+    try:
+        result = subprocess.run(args, cwd=str(SCRIPT_DIR), capture_output=False)
+    finally:
+        if heartbeat_thread:
+            heartbeat_thread.stop()
+
     if result.returncode != 0:
         raise RuntimeError(f"scraper.py exited with code {result.returncode}")
 
@@ -257,10 +287,12 @@ def process_job(session: requests.Session, job: dict[str, Any]) -> None:
 
     # ── Heartbeat: starting ────────────────────────────────────────────────
     _heartbeat(session, job_id)
+    log.info("Scraping %s — this may take a while. Heartbeats sent every 90s.", site["name"])
 
-    # ── Run scraper ────────────────────────────────────────────────────────
+    # ── Run scraper (background thread keeps heartbeat alive) ──────────────
+    hb = _HeartbeatThread(session, job_id)
     try:
-        output_path = run_scraper(site["id"], max_pages, delay)
+        output_path = run_scraper(site["id"], max_pages, delay, heartbeat_thread=hb)
     except Exception as e:
         log.error("Scraper error: %s", e)
         _fail_job(session, job_id, f"Scraper error: {e}")
