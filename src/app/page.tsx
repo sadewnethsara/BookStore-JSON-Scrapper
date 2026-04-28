@@ -412,7 +412,7 @@ export default function Home() {
                 disabled={isMerging}
                 className="glass px-5 h-full rounded-xl text-xs font-black uppercase tracking-widest hover:bg-white/10 transition-all"
               >
-                Merge
+                {isMerging ? "Publishing…" : "Publish to Catalog"}
               </button>
             </div>
           ) : null}
