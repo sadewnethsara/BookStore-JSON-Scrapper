@@ -309,28 +309,19 @@ def process_job(session: requests.Session, job: dict[str, Any]) -> None:
         _fail_job(session, job_id, "Scraper output is not a JSON array.")
         return
 
-    # Map scraper fields → ScrapedBook schema
+    # Pass scraper fields through as-is — ScrapedBook schema uses the same names
+    # (name, url, sku, sale_price, original_price, image_url, description, etc.)
+    # Only inject catalog_source which the scraper doesn't set.
     products = []
     for item in raw:
         if not isinstance(item, dict):
             continue
-        mapped: dict[str, Any] = {
-            "catalog_source": catalog_src,
-            "title":          item.get("name", ""),
-            "source_url":     item.get("url", ""),
-            "source_sku":     item.get("sku", "") or item.get("url", "").rstrip("/").split("/")[-1],
-            "price":          _parse_price(item.get("sale_price") or item.get("original_price", "")),
-            "original_price": _parse_price(item.get("original_price", "")),
-            "image_url":      item.get("image_url", "") or None,
-            "description":    item.get("description", "") or None,
-            "author":         item.get("author", "") or None,
-            "publisher":      item.get("publisher", "") or None,
-            "category":       item.get("category", "") or None,
-            "language":       item.get("language", "") or None,
-            "page_count":     _parse_int(item.get("page_count")),
-        }
-        if not mapped["title"]:
+        if not item.get("name", "").strip():
             continue
+        mapped: dict[str, Any] = {**item, "catalog_source": catalog_src}
+        # Ensure sku is present — fall back to last URL path segment
+        if not mapped.get("sku", "").strip():
+            mapped["sku"] = item.get("url", "").rstrip("/").split("/")[-1]
         products.append(mapped)
 
     n = len(products)
@@ -365,32 +356,6 @@ def process_job(session: requests.Session, job: dict[str, Any]) -> None:
     # ── Complete ───────────────────────────────────────────────────────────
     _post_worker(session, job_id, {"type": "complete"})
     log.info("Job %s complete — %d rows in %d parts.", job_id, n, parts_total)
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# Field helpers
-# ══════════════════════════════════════════════════════════════════════════════
-
-import re as _re
-
-_CURRENCY_RE = _re.compile(r"රු|Rs\.?|LKR|[$£€₹,]", _re.IGNORECASE)
-
-
-def _parse_price(raw: Any) -> Optional[float]:
-    if raw is None:
-        return None
-    s = _CURRENCY_RE.sub("", str(raw)).strip()
-    try:
-        return float(s)
-    except ValueError:
-        return None
-
-
-def _parse_int(raw: Any) -> Optional[int]:
-    if raw is None:
-        return None
-    s = _re.sub(r"[^\d]", "", str(raw))
-    return int(s) if s else None
 
 
 # ══════════════════════════════════════════════════════════════════════════════
