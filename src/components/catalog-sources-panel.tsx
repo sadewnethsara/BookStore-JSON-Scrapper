@@ -56,11 +56,7 @@ async function fetchIngestJobsList(): Promise<{
     const res = await fetch("/api/catalog/ingest-jobs?limit=80");
     const data = (await res.json()) as { jobs?: JobRow[]; error?: string };
     if (!res.ok) {
-      return {
-        ok: false,
-        jobs: [],
-        error: data.error ?? `HTTP ${res.status}`,
-      };
+      return { ok: false, jobs: [], error: data.error ?? `HTTP ${res.status}` };
     }
     return { ok: true, jobs: data.jobs ?? [] };
   } catch {
@@ -106,25 +102,25 @@ export function CatalogSourcesPanel({
   const partsByJobRef = useRef(partsByJob);
   const [partsLoading, setPartsLoading] = useState<Record<string, boolean>>({});
 
+  // key = `${jobId}:${partIndex}` — which part is currently being fetched & loaded
+  const [loadingPartKey, setLoadingPartKey] = useState<string | null>(null);
+  // summary of what's currently shown in the reviewer
+  const [loadedInfo, setLoadedInfo] = useState<{
+    jobId: string;
+    partIndex: number;
+    source: string;
+    label: string;
+    count: number;
+  } | null>(null);
+
   useEffect(() => {
     partsByJobRef.current = partsByJob;
   }, [partsByJob]);
 
-  const [previewJobId, setPreviewJobId] = useState<string | null>(null);
-  /** `null` = merged payload for the whole job; otherwise one JSON chunk */
-  const [previewPartIndex, setPreviewPartIndex] = useState<number | null>(null);
-  const [previewLoading, setPreviewLoading] = useState(false);
-  const [previewSample, setPreviewSample] = useState<{
-    status: string;
-    rows: number;
-    titles: string[];
-    source: string;
-    label: string;
-  } | null>(null);
-
+  // Never activate a full-screen preview overlay (kept for compat)
   useEffect(() => {
-    onCatalogPreviewActiveChange?.(previewJobId !== null);
-  }, [previewJobId, onCatalogPreviewActiveChange]);
+    onCatalogPreviewActiveChange?.(false);
+  }, [onCatalogPreviewActiveChange]);
 
   const refresh = () => {
     if (!enabled) return;
@@ -206,168 +202,55 @@ export function CatalogSourcesPanel({
     [onNotify],
   );
 
-  const applyPayloadPreview = (
-    mergedForPartition: unknown[],
-    job: JobRow,
-    partLabel: string,
-    jobStatus?: string,
-  ) => {
-    const { valid } = partitionScrapedBooks(mergedForPartition);
-    const titles = valid.slice(0, 5).map((b) => b.name || b.sku || "—");
-    setPreviewSample({
-      status: jobStatus ?? job.status,
-      rows: valid.length,
-      titles,
-      source: job.catalog_source,
-      label: partLabel,
-    });
-  };
-
-  const fetchJobWithPayload = async (jobId: string) => {
-    const res = await fetch(
-      `/api/catalog/ingest-jobs/${jobId}?include_payload=1`,
-    );
-    const data = (await res.json()) as {
-      ok?: boolean;
-      parts?: Array<{
-        part_index: number;
-        payload_json?: unknown;
-        row_count?: number;
-      }>;
-      job?: { status?: string };
-      error?: string;
-    };
-    if (!res.ok) {
-      return { ok: false as const, error: data.error ?? "Request failed" };
-    }
-    return { ok: true as const, data };
-  };
-
-  const openPreviewFullJob = async (job: JobRow) => {
-    setPreviewJobId(job.id);
-    setPreviewPartIndex(null);
-    setPreviewLoading(true);
-    setPreviewSample(null);
-    try {
-      const result = await fetchJobWithPayload(job.id);
-      if (!result.ok) {
-        onNotify(result.error ?? "Preview failed", "error");
-        setPreviewJobId(null);
-        return;
-      }
-      const parts = result.data.parts ?? [];
-      const merged: unknown[] = [];
-      [...parts]
-        .sort((a, b) => a.part_index - b.part_index)
-        .forEach((p) => {
-          if (Array.isArray(p.payload_json)) {
-            merged.push(...p.payload_json);
-          }
-        });
-      const n = parts.filter(
-        (p) => Array.isArray(p.payload_json) && p.payload_json.length > 0,
-      ).length;
-      applyPayloadPreview(
-        merged,
-        job,
-        n > 1 ? `All parts merged (${n} JSON files)` : "Full job",
-        result.data.job?.status,
-      );
-    } catch {
-      onNotify("Preview failed", "error");
-      setPreviewJobId(null);
-    } finally {
-      setPreviewLoading(false);
-    }
-  };
-
-  const openPreviewPart = async (job: JobRow, partIndex: number) => {
-    setPreviewJobId(job.id);
-    setPreviewPartIndex(partIndex);
-    setPreviewLoading(true);
-    setPreviewSample(null);
-    try {
-      const result = await fetchJobWithPayload(job.id);
-      if (!result.ok) {
-        onNotify(result.error ?? "Preview failed", "error");
-        setPreviewJobId(null);
-        return;
-      }
-      const parts = result.data.parts ?? [];
-      const part = parts.find((p) => p.part_index === partIndex);
-      const raw = part?.payload_json;
-      const arr = Array.isArray(raw) ? raw : [];
-      applyPayloadPreview(
-        arr,
-        job,
-        `JSON part ${partIndex} (${arr.length} rows in file)`,
-        result.data.job?.status,
-      );
-    } catch {
-      onNotify("Preview failed", "error");
-      setPreviewJobId(null);
-    } finally {
-      setPreviewLoading(false);
-    }
-  };
-
-  const clearPreview = () => {
-    setPreviewJobId(null);
-    setPreviewPartIndex(null);
-    setPreviewSample(null);
-    setPreviewLoading(false);
-  };
-
-  const importPreviewJob = async () => {
-    if (!previewJobId) return;
-    setPreviewLoading(true);
-    try {
-      const res = await fetch(
-        `/api/catalog/ingest-jobs/${previewJobId}?include_payload=1`,
-      );
-      const data = (await res.json()) as {
-        parts?: Array<{ part_index: number; payload_json?: unknown }>;
-        job?: { catalog_source?: string };
-        error?: string;
-      };
-      if (!res.ok) {
-        onNotify(data.error ?? "Import failed", "error");
-        return;
-      }
-      const parts = data.parts ?? [];
-      let merged: unknown[] = [];
-
-      if (previewPartIndex != null) {
-        const part = parts.find((p) => p.part_index === previewPartIndex);
-        if (Array.isArray(part?.payload_json)) {
-          merged = [...part.payload_json];
+  /** One-click: fetch payload for a single part and send it directly to the reviewer. */
+  const loadPartIntoReviewer = useCallback(
+    async (job: JobRow, partIndex: number) => {
+      const key = `${job.id}:${partIndex}`;
+      if (loadingPartKey === key) return; // already loading
+      setLoadingPartKey(key);
+      try {
+        const res = await fetch(
+          `/api/catalog/ingest-jobs/${job.id}?include_payload=1`,
+        );
+        const data = (await res.json()) as {
+          ok?: boolean;
+          parts?: Array<{ part_index: number; payload_json?: unknown }>;
+          job?: { catalog_source?: string; label?: string | null };
+          error?: string;
+        };
+        if (!res.ok) {
+          onNotify(data.error ?? "Failed to load part", "error");
+          return;
         }
-      } else {
-        [...parts]
-          .sort((a, b) => a.part_index - b.part_index)
-          .forEach((p) => {
-            if (Array.isArray(p.payload_json)) merged.push(...p.payload_json);
-          });
+        const parts = data.parts ?? [];
+        const part = parts.find((p) => p.part_index === partIndex);
+        const raw = Array.isArray(part?.payload_json) ? part.payload_json : [];
+        const { valid, errors } = partitionScrapedBooks(raw);
+        if (valid.length === 0) {
+          onNotify(
+            errors.length
+              ? `Part ${partIndex}: no valid rows (${errors.length} invalid).`
+              : `Part ${partIndex} is empty.`,
+            "warning",
+          );
+          return;
+        }
+        const src = data.job?.catalog_source ?? job.catalog_source;
+        const lbl = data.job?.label ?? job.label ?? src;
+        onImportBooks(valid, { source: src, jobId: job.id, partIndex });
+        setLoadedInfo({ jobId: job.id, partIndex, source: src, label: lbl, count: valid.length });
+        onNotify(
+          `JSON #${partIndex} loaded — ${valid.length} book${valid.length !== 1 ? "s" : ""}${errors.length ? ` (${errors.length} skipped)` : ""} ready to review.`,
+          "success",
+        );
+      } catch {
+        onNotify("Failed to load part", "error");
+      } finally {
+        setLoadingPartKey(null);
       }
-
-      const { valid, errors } = partitionScrapedBooks(merged);
-      if (valid.length === 0) {
-        onNotify("No valid rows in this payload.", "warning");
-        return;
-      }
-      const src = data.job?.catalog_source ?? previewSample?.source ?? "";
-      // Pass partIndex so the reviewer can mark it as imported after Save Batches
-      onImportBooks(valid, { source: src, jobId: previewJobId, partIndex: previewPartIndex });
-      onNotify(
-        `Loaded ${valid.length} rows into reviewer${errors.length ? ` (${errors.length} skipped)` : ""}.`,
-        "success",
-      );
-    } catch {
-      onNotify("Import failed", "error");
-    } finally {
-      setPreviewLoading(false);
-    }
-  };
+    },
+    [loadingPartKey, onImportBooks, onNotify],
+  );
 
   if (!enabled) {
     return (
@@ -380,7 +263,7 @@ export function CatalogSourcesPanel({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4">
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-[11px] font-black uppercase tracking-widest text-white/45">
           Catalog sources
@@ -484,35 +367,73 @@ export function CatalogSourcesPanel({
                                 <p className="px-2 py-2 text-[11px] text-white/45">
                                   Loading JSON parts…
                                 </p>
+                              ) : (metaParts ?? []).length === 0 ? (
+                                <p className="px-2 py-2 text-[11px] text-white/35">
+                                  No parts yet.
+                                </p>
                               ) : (
-                                <>
-                                  {(metaParts ?? []).map((p) => (
+                                (metaParts ?? []).map((p) => {
+                                  const pk = `${job.id}:${p.part_index}`;
+                                  const isActive =
+                                    loadedInfo?.jobId === job.id &&
+                                    loadedInfo.partIndex === p.part_index;
+                                  const isLoading = loadingPartKey === pk;
+                                  return (
                                     <button
                                       key={p.part_index}
                                       type="button"
+                                      disabled={isLoading || !!loadingPartKey}
                                       onClick={() =>
-                                        void openPreviewPart(job, p.part_index)
+                                        void loadPartIntoReviewer(job, p.part_index)
                                       }
-                                      className={`mb-1 w-full rounded-lg px-3 py-2 text-left text-[11px] transition-colors ${
-                                        previewJobId === job.id &&
-                                        previewPartIndex === p.part_index
-                                          ? "bg-violet-500/20 text-white"
+                                      className={`mb-1 flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-[11px] transition-colors disabled:opacity-50 ${
+                                        isActive
+                                          ? "bg-violet-500/20 text-white ring-1 ring-violet-500/40"
                                           : "text-white/75 hover:bg-white/10"
                                       }`}
                                     >
-                                      <span className="font-mono font-bold text-primary/95">
-                                        JSON #{p.part_index}
+                                      <span className="flex items-center gap-2">
+                                        {isLoading ? (
+                                          <span className="h-3 w-3 animate-spin rounded-full border border-white/30 border-t-white/80" />
+                                        ) : isActive ? (
+                                          <span className="text-violet-400">▶</span>
+                                        ) : null}
+                                        <span className="font-mono font-bold text-primary/95">
+                                          JSON #{p.part_index}
+                                        </span>
+                                        <span className="text-white/45">
+                                          {p.row_count ?? "—"} items
+                                        </span>
                                       </span>
-                                      <span className="text-white/50"> · </span>
-                                      <span>
-                                        {p.row_count ?? "—"} items
+                                      <span
+                                        className={`text-[9px] uppercase font-bold ${
+                                          p.status === "imported"
+                                            ? "text-emerald-400/80"
+                                            : p.status === "skipped"
+                                              ? "text-white/30"
+                                              : "text-amber-400/70"
+                                        }`}
+                                      >
+                                        {p.status === "imported"
+                                          ? "✓ done"
+                                          : p.status === "skipped"
+                                            ? "skipped"
+                                            : isLoading
+                                              ? "loading…"
+                                              : "load →"}
                                       </span>
-                                      <span className="text-white/40"> · </span>
-                                      <span className="uppercase">{p.status}</span>
                                     </button>
-                                  ))}
-                                </>
+                                  );
+                                })
                               )}
+                              <div className="mt-1 px-2">
+                                <Link
+                                  href={`/ingest-jobs/${job.id}`}
+                                  className="text-[10px] font-bold text-white/35 hover:text-white/60"
+                                >
+                                  Open full job page →
+                                </Link>
+                              </div>
                             </div>
                           ) : null}
                         </div>
@@ -526,70 +447,26 @@ export function CatalogSourcesPanel({
         )}
       </div>
 
-      {/* Preview */}
-      <div className="shrink-0 rounded-2xl border border-violet-500/25 bg-violet-950/25 p-4">
-        <div className="flex items-start justify-between gap-2">
-          <h3 className="text-[10px] font-black uppercase tracking-widest text-violet-200/80">
-            Preview
-          </h3>
-          {previewJobId ? (
-            <button
-              type="button"
-              onClick={clearPreview}
-              className="text-[10px] font-bold uppercase tracking-wider text-white/50 hover:text-white"
-            >
-              Close
-            </button>
-          ) : null}
-        </div>
-        {!previewJobId && !previewLoading ? (
-          <p className="mt-2 text-xs text-white/45">
-            Expand a job and choose a JSON part (or merged full job).
+      {/* Currently loaded indicator */}
+      {loadedInfo ? (
+        <div className="shrink-0 rounded-xl border border-violet-500/20 bg-violet-950/20 px-3 py-2.5">
+          <p className="text-[9px] font-black uppercase tracking-widest text-violet-300/60">
+            Loaded in reviewer
           </p>
-        ) : previewLoading && !previewSample ? (
-          <p className="mt-2 text-xs text-white/45">Loading preview…</p>
-        ) : previewSample ? (
-          <>
-            <p className="mt-2 text-[11px] font-medium text-violet-200/90">
-              {previewSample.label}
-            </p>
-            <p className="mt-1 text-xs text-white/70">
-              <span className="font-mono text-primary">{previewSample.source}</span>{" "}
-              · {previewSample.rows} valid rows · {previewSample.status}
-            </p>
-            {previewSample.titles.length > 0 ? (
-              <ul className="mt-2 list-inside list-disc text-[11px] text-white/55">
-                {previewSample.titles.map((t, i) => (
-                  <li key={i} className="truncate">
-                    {t}
-                  </li>
-                ))}
-                {previewSample.rows > previewSample.titles.length ? (
-                  <li className="text-white/35">…</li>
-                ) : null}
-              </ul>
-            ) : null}
-            <div className="mt-3 flex flex-wrap gap-2">
-              <button
-                type="button"
-                disabled={previewLoading}
-                onClick={() => void importPreviewJob()}
-                className="premium-button rounded-lg px-4 py-2 text-[10px] font-black uppercase tracking-wider disabled:opacity-40"
-              >
-                Open in reviewer
-              </button>
-              {previewJobId ? (
-                <Link
-                  href={`/ingest-jobs/${previewJobId}`}
-                  className="rounded-lg border border-white/15 px-4 py-2 text-[10px] font-black uppercase tracking-wider text-white/80 hover:bg-white/10"
-                >
-                  Full job
-                </Link>
-              ) : null}
-            </div>
-          </>
-        ) : null}
-      </div>
+          <p className="mt-0.5 truncate text-[11px] font-semibold text-white/80">
+            {loadedInfo.label} · JSON #{loadedInfo.partIndex}
+          </p>
+          <p className="text-[10px] text-white/45">
+            {loadedInfo.count} books · {loadedInfo.source}
+          </p>
+        </div>
+      ) : (
+        <div className="shrink-0 rounded-xl border border-white/5 bg-white/[0.02] px-3 py-2.5">
+          <p className="text-[10px] text-white/35">
+            Expand a completed job and click a JSON part to load it.
+          </p>
+        </div>
+      )}
     </div>
   );
 }
