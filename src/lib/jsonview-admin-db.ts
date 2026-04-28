@@ -2,12 +2,14 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@lumina/supabase-client";
-import { createLuminaServerClient } from "@lumina/supabase-client/server";
+import { createLuminaServiceRoleClient } from "@lumina/supabase-client/server";
 
 /**
- * Cookie-backed Supabase client with `Database` typing for `.from()`.
- * The raw SSR client’s inferred generics lag new tables; cast keeps Phase 5 routes type-safe.
+ * Service-role Supabase client for admin API routes.
+ * Uses SUPABASE_SERVICE_ROLE_KEY — bypasses RLS so catalog_ingest_jobs
+ * INSERT/UPDATE/SELECT work regardless of table RLS policies.
+ * All callers must gate access with assertJsonViewWriteAuth() first.
  */
 export async function jsonViewAdminDb(): Promise<SupabaseClient<Database>> {
-  return (await createLuminaServerClient()) as unknown as SupabaseClient<Database>;
+  return createLuminaServiceRoleClient() as unknown as SupabaseClient<Database>;
 }
