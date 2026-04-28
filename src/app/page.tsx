@@ -7,7 +7,7 @@ import type { ScrapedBook } from "@lumina/shared-types";
 import { createLuminaBrowserClient } from "@lumina/supabase-client/browser";
 import { partitionScrapedBooks } from "@lumina/shared-types";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 function isSupabasePublicConfigured(): boolean {
   return Boolean(
@@ -17,7 +17,7 @@ function isSupabasePublicConfigured(): boolean {
 }
 
 interface Notification {
-  id: number;
+  id: string;
   message: string;
   type: 'success' | 'info' | 'error' | 'warning';
 }
@@ -36,6 +36,7 @@ export default function Home() {
   const [sourcesCollapsed, setSourcesCollapsed] = useState(false);
   /** Set when this review session came from a job part (Review Queue → button) */
   const [partContext, setPartContext] = useState<{ jobId: string; partIndex: number } | null>(null);
+  const notificationSeq = useRef(0);
 
   useEffect(() => {
     fetch("/api/ai/enrich")
@@ -91,10 +92,11 @@ export default function Home() {
   }, []);
 
   const addNotification = (msg: string, type: Notification['type'] = 'info') => {
-    const id = Date.now();
-    setNotifications(prev => [...prev, { id, message: msg, type }]);
+    notificationSeq.current += 1;
+    const id = `${Date.now()}-${notificationSeq.current}`;
+    setNotifications((prev) => [...prev, { id, message: msg, type }]);
     setTimeout(() => {
-      setNotifications(prev => prev.filter(n => n.id !== id));
+      setNotifications((prev) => prev.filter((n) => n.id !== id));
     }, 3000);
   };
 
