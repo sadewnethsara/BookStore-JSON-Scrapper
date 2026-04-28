@@ -3,7 +3,7 @@
 import { DashboardNav } from "@/components/dashboard-nav";
 import { WorkerEnvSnippet } from "@/components/worker-env-snippet";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 type JobFull = Record<string, unknown> & {
@@ -46,8 +46,11 @@ function downloadJson(filename: string, data: unknown) {
   URL.revokeObjectURL(a.href);
 }
 
+const REVIEW_QUEUE_KEY = "review_queue_preload";
+
 export default function IngestJobDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const jobId = typeof params.jobId === "string" ? params.jobId : "";
 
   const [job, setJob] = useState<JobFull | null>(null);
@@ -114,6 +117,24 @@ export default function IngestJobDetailPage() {
     typeof jobConfig.product_path_fragments === "string"
       ? jobConfig.product_path_fragments
       : "";
+
+  const openInReviewQueue = (p: PartRow) => {
+    if (!p.payload_json) return;
+    try {
+      sessionStorage.setItem(
+        REVIEW_QUEUE_KEY,
+        JSON.stringify({
+          items: p.payload_json,
+          label: `Part ${p.part_index} — ${job?.catalog_source ?? jobId.slice(0, 8)}`,
+          jobId,
+          partIndex: p.part_index,
+        }),
+      );
+      router.push("/");
+    } catch {
+      alert("Could not store part data — payload may be too large for sessionStorage.");
+    }
+  };
 
   const payloadSize = useMemo(() => {
     const m = new Map<number, number>();
@@ -334,6 +355,14 @@ export default function IngestJobDetailPage() {
                             {Math.ceil((payloadSize.get(p.part_index) ?? 0) / 1024)}{" "}
                             KB JSON
                           </span>
+                          <button
+                            type="button"
+                            disabled={p.payload_json == null}
+                            onClick={() => openInReviewQueue(p)}
+                            className="rounded-lg border border-primary/40 bg-primary/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-primary hover:bg-primary/20 disabled:opacity-30"
+                          >
+                            Review Queue →
+                          </button>
                           <button
                             type="button"
                             disabled={p.payload_json == null}

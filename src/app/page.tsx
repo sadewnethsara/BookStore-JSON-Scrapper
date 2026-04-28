@@ -44,6 +44,35 @@ export default function Home() {
       .catch(() => setAiEnabled(false));
   }, []);
 
+  // Auto-load a part from ingest-jobs detail page when navigated here via "Review Queue →"
+  useEffect(() => {
+    const REVIEW_QUEUE_KEY = "review_queue_preload";
+    try {
+      const raw = sessionStorage.getItem(REVIEW_QUEUE_KEY);
+      if (!raw) return;
+      sessionStorage.removeItem(REVIEW_QUEUE_KEY);
+      const parsed = JSON.parse(raw) as {
+        items?: unknown;
+        label?: string;
+        jobId?: string;
+        partIndex?: number;
+      };
+      if (!Array.isArray(parsed.items)) return;
+      const { valid, errors } = partitionScrapedBooks(parsed.items);
+      if (valid.length === 0) return;
+      setProducts(valid);
+      setCurrentIndex(0);
+      setSelectedItems([]);
+      addNotification(
+        `Part ${parsed.partIndex ?? "?"} loaded — ${valid.length} books${errors.length > 0 ? ` (${errors.length} invalid skipped)` : ""}. Accept or Reject each one.`,
+        "success",
+      );
+    } catch {
+      // ignore parse errors
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     if (!isSupabasePublicConfigured()) return;
     const supabase = createLuminaBrowserClient();
