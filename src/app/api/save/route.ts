@@ -1,5 +1,4 @@
 import type { Json } from "@lumina/supabase-client";
-import { createLuminaServerClient } from "@lumina/supabase-client/server";
 import { partitionScrapedBooks } from "@lumina/shared-types";
 import { NextResponse } from "next/server";
 import fs from "fs/promises";
@@ -7,6 +6,7 @@ import path from "path";
 
 import { assertJsonViewWriteAuth, isJsonViewSupabaseConfigured } from "@/lib/auth-guard";
 import { dedupeBySku } from "@/lib/dedupe-by-sku";
+import { jsonViewAdminDb } from "@/lib/jsonview-admin-db";
 
 export async function POST(request: Request) {
   try {
@@ -36,20 +36,19 @@ export async function POST(request: Request) {
     const deduped = dedupeBySku(valid);
 
     if (isJsonViewSupabaseConfigured()) {
-      const supabase = await createLuminaServerClient();
+      const supabase = await jsonViewAdminDb();
       const rows = deduped.map((item) => ({
         catalog_source: item.catalog_source.trim(),
         source_sku: item.sku.trim(),
         payload: item as unknown as Json,
       }));
 
-      const { error } = await supabase
-        .schema("staging")
-        .from("books")
-        .upsert(rows, { onConflict: "catalog_source,source_sku" });
+      const { error } = await supabase.rpc("jsonview_upsert_staging_books", {
+        p_rows: rows,
+      });
 
       if (error) {
-        console.error("staging.books upsert:", error);
+        console.error("jsonview_upsert_staging_books:", error);
         return NextResponse.json({ error: error.message }, { status: 500 });
       }
 

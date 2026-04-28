@@ -79,10 +79,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "No valid rows in reviewed parts" }, { status: 400 });
   }
 
-  const { error: upErr } = await supabase
-    .schema("staging")
-    .from("books")
-    .upsert(rows, { onConflict: "catalog_source,source_sku" });
+  const { error: upErr } = await supabase.rpc("jsonview_upsert_staging_books", {
+    p_rows: rows,
+  });
   if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 });
 
   return NextResponse.json({ ok: true, staged: rows.length, parts: (parts ?? []).length });
