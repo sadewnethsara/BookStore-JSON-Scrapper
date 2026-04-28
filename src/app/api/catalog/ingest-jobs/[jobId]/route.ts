@@ -165,3 +165,38 @@ export async function PATCH(request: Request, ctx: RouteCtx) {
 
   return NextResponse.json({ ok: true, job });
 }
+
+/** Admin: permanently delete a job and all its parts. */
+export async function DELETE(_request: Request, ctx: RouteCtx) {
+  const auth = await assertJsonViewWriteAuth();
+  if (auth) return auth;
+  if (!isJsonViewSupabaseConfigured()) {
+    return NextResponse.json({ error: "Supabase is not configured." }, { status: 400 });
+  }
+
+  const { jobId } = await ctx.params;
+  if (!UUID_RE.test(jobId)) return badId();
+
+  const supabase = await jsonViewAdminDb();
+
+  // Delete parts first (FK constraint)
+  const { error: partsErr } = await supabase
+    .from("catalog_ingest_job_parts")
+    .delete()
+    .eq("job_id", jobId);
+  if (partsErr) {
+    console.error("delete job parts:", partsErr);
+    return NextResponse.json({ error: partsErr.message }, { status: 500 });
+  }
+
+  const { error } = await supabase
+    .from("catalog_ingest_jobs")
+    .delete()
+    .eq("id", jobId);
+  if (error) {
+    console.error("delete job:", error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  return NextResponse.json({ ok: true, deleted: jobId });
+}

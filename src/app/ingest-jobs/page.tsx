@@ -309,10 +309,11 @@ function statusClass(s: string) {
 
 export default function IngestJobsListPage() {
   const router = useRouter();
-  const [jobs, setJobs]       = useState<JobRow[]>([]);
-  const [error, setError]     = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [jobs, setJobs]         = useState<JobRow[]>([]);
+  const [error, setError]       = useState<string | null>(null);
+  const [loading, setLoading]   = useState(true);
   const [creating, setCreating] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   // Form state
   const [selectedPreset, setSelectedPreset] = useState<SitePreset>(SITE_PRESETS[0]);
@@ -433,6 +434,21 @@ export default function IngestJobsListPage() {
       setError("Failed to create job.");
     } finally {
       setCreating(false);
+    }
+  };
+
+  const handleDelete = async (jobId: string, source: string) => {
+    if (!confirm(`Delete job "${source}" and all its parts? This cannot be undone.`)) return;
+    setDeletingId(jobId);
+    try {
+      const res = await fetch(`/api/catalog/ingest-jobs/${jobId}`, { method: "DELETE" });
+      const data = (await res.json()) as { ok?: boolean; error?: string };
+      if (!res.ok) { setError(data.error ?? `HTTP ${res.status}`); return; }
+      setJobs((prev) => prev.filter((j) => j.id !== jobId));
+    } catch {
+      setError("Failed to delete job.");
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -744,12 +760,23 @@ export default function IngestJobsListPage() {
                           {new Date(j.updated_at).toLocaleString()}
                         </td>
                         <td className="px-4 py-3">
-                          <Link
-                            href={`/ingest-jobs/${j.id}`}
-                            className="text-xs font-bold text-primary hover:underline"
-                          >
-                            Open →
-                          </Link>
+                          <div className="flex items-center gap-3">
+                            <Link
+                              href={`/ingest-jobs/${j.id}`}
+                              className="text-xs font-bold text-primary hover:underline"
+                            >
+                              Open →
+                            </Link>
+                            <button
+                              type="button"
+                              disabled={deletingId === j.id || j.status === "running"}
+                              onClick={() => void handleDelete(j.id, j.catalog_source)}
+                              title={j.status === "running" ? "Cancel the job before deleting" : "Delete job"}
+                              className="text-xs font-bold text-red-400/70 hover:text-red-400 disabled:opacity-30 disabled:cursor-not-allowed"
+                            >
+                              {deletingId === j.id ? "…" : "Delete"}
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
