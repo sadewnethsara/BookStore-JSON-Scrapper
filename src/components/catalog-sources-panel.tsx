@@ -26,7 +26,7 @@ type Props = {
   onCatalogPreviewActiveChange?: (active: boolean) => void;
   onImportBooks: (
     items: ScrapedBook[],
-    meta: { source: string; jobId: string },
+    meta: { source: string; jobId: string; partIndex: number | null },
   ) => void;
   onNotify: (msg: string, type: "success" | "error" | "info" | "warning") => void;
 };
@@ -355,29 +355,9 @@ export function CatalogSourcesPanel({
         onNotify("No valid rows in this payload.", "warning");
         return;
       }
-      // Mark reviewed JSON chunk(s) as imported so publish queue can pick them up later.
-      if (previewPartIndex != null) {
-        await fetch(
-          `/api/catalog/ingest-jobs/${previewJobId}/parts/${previewPartIndex}`,
-          {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ status: "imported" }),
-          },
-        );
-      } else {
-        await Promise.all(
-          parts.map((p) =>
-            fetch(`/api/catalog/ingest-jobs/${previewJobId}/parts/${p.part_index}`, {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ status: "imported" }),
-            }),
-          ),
-        );
-      }
       const src = data.job?.catalog_source ?? previewSample?.source ?? "";
-      onImportBooks(valid, { source: src, jobId: previewJobId });
+      // Pass partIndex so the reviewer can mark it as imported after Save Batches
+      onImportBooks(valid, { source: src, jobId: previewJobId, partIndex: previewPartIndex });
       onNotify(
         `Loaded ${valid.length} rows into reviewer${errors.length ? ` (${errors.length} skipped)` : ""}.`,
         "success",
@@ -506,18 +486,6 @@ export function CatalogSourcesPanel({
                                 </p>
                               ) : (
                                 <>
-                                  <button
-                                    type="button"
-                                    onClick={() => void openPreviewFullJob(job)}
-                                    className={`mb-1.5 w-full rounded-lg px-3 py-2 text-left text-[11px] font-semibold transition-colors ${
-                                      previewJobId === job.id &&
-                                      previewPartIndex === null
-                                        ? "bg-violet-500/25 text-white"
-                                        : "bg-white/5 text-white/80 hover:bg-white/10"
-                                    }`}
-                                  >
-                                    All parts merged (full job preview)
-                                  </button>
                                   {(metaParts ?? []).map((p) => (
                                     <button
                                       key={p.part_index}

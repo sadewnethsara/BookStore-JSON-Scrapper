@@ -1,4 +1,3 @@
-import { createLuminaServerClient } from "@lumina/supabase-client/server";
 import { partitionScrapedBooks, type ScrapedBook } from "@lumina/shared-types";
 import { NextResponse } from "next/server";
 import fs from "fs/promises";
@@ -6,6 +5,7 @@ import path from "path";
 
 import { assertJsonViewWriteAuth, isJsonViewSupabaseConfigured } from "@/lib/auth-guard";
 import { dedupeBySku } from "@/lib/dedupe-by-sku";
+import { jsonViewAdminDb } from "@/lib/jsonview-admin-db";
 import { rehostExternalBookCovers } from "@/lib/rehost-external-covers";
 
 export async function POST() {
@@ -16,7 +16,8 @@ export async function POST() {
     }
 
     if (isJsonViewSupabaseConfigured()) {
-      const supabase = await createLuminaServerClient();
+      // Use service-role client so the RPC runs with full privileges regardless of RLS
+      const supabase = await jsonViewAdminDb();
       const { data, error } = await supabase.rpc("promote_staging_to_catalog");
 
       if (error) {
@@ -32,7 +33,8 @@ export async function POST() {
           ? Number((data as { promoted: unknown }).promoted)
           : 0;
 
-      const { uploaded, failed } = await rehostExternalBookCovers(supabase);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- service-role client is compatible at runtime
+      const { uploaded, failed } = await rehostExternalBookCovers(supabase as any);
 
       return NextResponse.json({
         success: true,

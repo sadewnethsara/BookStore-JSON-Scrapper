@@ -260,8 +260,12 @@ export default function Home() {
   };
 
   const handleMerge = async () => {
+    if (isSupabasePublicConfigured() && !authEmail) {
+      addNotification("Sign in first — click the Sign in button in the top-right corner.", "warning");
+      return;
+    }
     setIsMerging(true);
-    addNotification("Merging files...", "info");
+    addNotification("Publishing to catalog…", "info");
     
     try {
       const response = await fetch('/api/merge', { method: 'POST' });
@@ -429,10 +433,15 @@ export default function Home() {
               <CatalogSourcesPanel
                 enabled={isSupabasePublicConfigured()}
                 onCatalogPreviewActiveChange={setCatalogPreviewOpen}
-                onImportBooks={(items) => {
+                onImportBooks={(items, meta) => {
                   setProducts(items);
                   setCurrentIndex(0);
                   setSelectedItems([]);
+                  if (meta.partIndex != null) {
+                    setPartContext({ jobId: meta.jobId, partIndex: meta.partIndex });
+                  } else {
+                    setPartContext(null);
+                  }
                 }}
                 onNotify={addNotification}
               />
