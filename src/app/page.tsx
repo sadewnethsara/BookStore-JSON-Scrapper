@@ -34,6 +34,8 @@ export default function Home() {
   const [aiWorking, setAiWorking] = useState(false);
   const [catalogPreviewOpen, setCatalogPreviewOpen] = useState(false);
   const [sourcesCollapsed, setSourcesCollapsed] = useState(false);
+  /** Set when this review session came from a job part (Review Queue → button) */
+  const [partContext, setPartContext] = useState<{ jobId: string; partIndex: number } | null>(null);
 
   useEffect(() => {
     fetch("/api/ai/enrich")
@@ -63,6 +65,9 @@ export default function Home() {
       setProducts(valid);
       setCurrentIndex(0);
       setSelectedItems([]);
+      if (parsed.jobId && parsed.partIndex != null) {
+        setPartContext({ jobId: parsed.jobId, partIndex: parsed.partIndex });
+      }
       addNotification(
         `Part ${parsed.partIndex ?? "?"} loaded — ${valid.length} books${errors.length > 0 ? ` (${errors.length} invalid skipped)` : ""}. Accept or Reject each one.`,
         "success",
@@ -226,6 +231,24 @@ export default function Home() {
           `Successfully saved ${data.count} items ${where}${extra}`,
           "success",
         );
+
+        // Mark the source part as imported so it can't be reviewed again
+        if (partContext) {
+          const { jobId, partIndex } = partContext;
+          fetch(`/api/catalog/ingest-jobs/${jobId}/parts/${partIndex}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status: "imported" }),
+          })
+            .then((r) => r.json())
+            .then((d: { ok?: boolean; error?: string }) => {
+              if (d.ok) {
+                addNotification(`Part ${partIndex} marked as reviewed ✓`, "info");
+                setPartContext(null);
+              }
+            })
+            .catch(() => {/* best-effort */});
+        }
       } else {
         addNotification(`Error: ${data.error}`, "error");
       }

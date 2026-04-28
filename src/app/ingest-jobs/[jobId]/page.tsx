@@ -337,7 +337,7 @@ export default function IngestJobDetailPage() {
                       key={p.id}
                       className="glass rounded-2xl border border-white/10 overflow-hidden"
                     >
-                      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
+                      <div className={`flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-4 py-3 ${p.status === "imported" ? "bg-emerald-500/5" : p.status === "skipped" ? "opacity-50" : ""}`}>
                         <div>
                           <span className="text-[10px] font-black uppercase text-white/40">
                             Part index
@@ -347,22 +347,44 @@ export default function IngestJobDetailPage() {
                           </p>
                         </div>
                         <div className="flex flex-wrap items-center gap-3">
-                          <span className="rounded-lg bg-white/10 px-2 py-1 text-[10px] font-black uppercase text-white/70">
-                            {p.status}
-                          </span>
+                          {/* Status badge */}
+                          {p.status === "imported" ? (
+                            <span className="rounded-lg bg-emerald-500/20 px-2 py-1 text-[10px] font-black uppercase text-emerald-400">
+                              ✓ Reviewed
+                            </span>
+                          ) : p.status === "skipped" ? (
+                            <span className="rounded-lg bg-white/10 px-2 py-1 text-[10px] font-black uppercase text-white/40">
+                              Skipped
+                            </span>
+                          ) : (
+                            <span className="rounded-lg bg-amber-500/20 px-2 py-1 text-[10px] font-black uppercase text-amber-400">
+                              Ready
+                            </span>
+                          )}
                           <span className="text-xs text-white/55">
                             {p.row_count} rows · ~
                             {Math.ceil((payloadSize.get(p.part_index) ?? 0) / 1024)}{" "}
                             KB JSON
                           </span>
-                          <button
-                            type="button"
-                            disabled={p.payload_json == null}
-                            onClick={() => openInReviewQueue(p)}
-                            className="rounded-lg border border-primary/40 bg-primary/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-primary hover:bg-primary/20 disabled:opacity-30"
-                          >
-                            Review Queue →
-                          </button>
+                          {/* Review Queue button — disabled if already reviewed */}
+                          {p.status === "imported" ? (
+                            <span className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-emerald-500/60">
+                              Already reviewed
+                            </span>
+                          ) : p.status === "skipped" ? (
+                            <span className="rounded-lg border border-white/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-white/30">
+                              Skipped
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              disabled={p.payload_json == null}
+                              onClick={() => openInReviewQueue(p)}
+                              className="rounded-lg border border-primary/40 bg-primary/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-primary hover:bg-primary/20 disabled:opacity-30"
+                            >
+                              Review Queue →
+                            </button>
+                          )}
                           <button
                             type="button"
                             disabled={p.payload_json == null}
